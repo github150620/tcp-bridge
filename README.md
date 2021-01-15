@@ -1,1 +1,2 @@
-# tcp-bridge
+# tcp-expose
+Expose the server behand NAT.
