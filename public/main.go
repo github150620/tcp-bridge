@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -12,44 +13,53 @@ import (
 )
 
 var (
-	addr1    string
-	addr2    string
-	password string
+	clientListenAddr string
+	agentListenAddr  string
+	agentPassword    string
 )
 
 var (
-	wg  sync.WaitGroup
 	ch1 chan net.Conn
 	ch2 chan net.Conn
 )
 
 func main() {
-	log.Println("public v0.1.0")
+	flag.Usage = func() {
+		fmt.Println("Usage: public")
+		flag.PrintDefaults()
+	}
 
-	flag.StringVar(&addr1, "addr1", "", "addr1")
-	flag.StringVar(&addr2, "addr2", "", "addr2")
-	flag.StringVar(&password, "password", "", "password")
+	flag.StringVar(&clientListenAddr, "c", "", "listen address for client")
+	flag.StringVar(&agentListenAddr, "a", "", "listen address for agent")
+	flag.StringVar(&agentPassword, "p", "", "password for agent")
 	flag.Parse()
 
-	if addr1 == "" {
+	if clientListenAddr == "" {
+		flag.Usage()
 		return
 	}
 
-	if addr2 == "" {
+	if agentListenAddr == "" {
+		flag.Usage()
 		return
 	}
 
-	if password == "" {
+	if agentPassword == "" {
+		flag.Usage()
 		return
 	}
+
+	log.Println("public v0.1.0")
 
 	ch1 = make(chan net.Conn, 10)
 	ch2 = make(chan net.Conn, 10)
 
+	var wg sync.WaitGroup
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := listenAndServe1(addr1)
+		err := listenAndServe1(clientListenAddr)
 		if err != nil {
 			os.Exit(1)
 		}
@@ -58,7 +68,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := listenAndServe2(addr2)
+		err := listenAndServe2(agentListenAddr)
 		if err != nil {
 			os.Exit(1)
 		}
@@ -88,7 +98,7 @@ func listenAndServe1(addr string) error {
 			time.Sleep(time.Second * 5)
 			continue
 		}
-		log.Printf("[INFO] %s", rw.RemoteAddr().String())
+		log.Printf("[INFO] client %s connected", rw.RemoteAddr().String())
 		serve1(rw)
 	}
 }
@@ -112,43 +122,55 @@ func listenAndServe2(addr string) error {
 			time.Sleep(time.Second * 5)
 			continue
 		}
-		log.Printf("[INFO] %s", rw.RemoteAddr().String())
+		log.Printf("[INFO] agent %s connected", rw.RemoteAddr().String())
 		serve2(rw)
 	}
 }
 
 func serve2(rw net.Conn) {
-	buf := make([]byte, 8)
+	buf := make([]byte, len(agentPassword))
 	_, err := rw.Read(buf)
 	if err != nil {
 		rw.Close()
 		return
 	}
-	if string(buf) != password {
+	if string(buf) != agentPassword {
 		rw.Close()
-		log.Printf("[WARN] password invalid: %s %s\n", rw.RemoteAddr().String(), string(buf))
+		log.Printf("[WARN] %s password invalid (%s)\n", rw.RemoteAddr().String(), string(buf))
 		return
 	}
+	log.Printf("[INFO] %s password ok", rw.RemoteAddr().String())
+
 	ch2 <- rw
 }
 
 func pair() {
-	select {
-	case rw1 := <-ch1:
+	for {
 		select {
+		case rw1 := <-ch1:
+			select {
+			case rw2 := <-ch2:
+				log.Printf("[INFO] %s send password...", rw2.RemoteAddr().String())
+				rw2.Write([]byte(agentPassword))
+				log.Printf("[INFO] %s <-> %s", rw2.RemoteAddr().String(), rw1.RemoteAddr().String())
+				join := tcpjoin.New(rw1, rw2)
+				go join.Run()
+			case <-time.After(30 * time.Second):
+				rw1.Close()
+				log.Printf("[INFO] %s no pair", rw1.RemoteAddr().String())
+			}
 		case rw2 := <-ch2:
-			join := tcpjoin.New(rw1, rw2)
-			go join.Run()
-		case <-time.After(30 * time.Second):
-			rw1.Close()
-		}
-	case rw1 := <-ch2:
-		select {
-		case rw2 := <-ch1:
-			join := tcpjoin.New(rw1, rw2)
-			go join.Run()
-		case <-time.After(30 * time.Second):
-			rw1.Close()
+			select {
+			case rw1 := <-ch1:
+				log.Printf("[INFO] %s send password...", rw2.RemoteAddr().String())
+				rw2.Write([]byte(agentPassword))
+				log.Printf("[INFO] %s <-> %s", rw2.RemoteAddr().String(), rw1.RemoteAddr().String())
+				join := tcpjoin.New(rw2, rw1)
+				go join.Run()
+			case <-time.After(30 * time.Second):
+				rw2.Close()
+				log.Printf("[INFO] %s no pair", rw2.RemoteAddr().String())
+			}
 		}
 	}
 }
