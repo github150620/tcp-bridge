@@ -1,4 +1,4 @@
-module public
+module proxy
 
 go 1.14
 
