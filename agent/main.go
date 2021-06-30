@@ -108,5 +108,8 @@ func connectAndServe() {
 
 	log.Printf("[INFO] %s <-> %s", rw1.LocalAddr().String(), rw2.LocalAddr().String())
 	join := tcpjoin.New(rw1, rw2)
-	go join.Run()
+	go func() {
+		join.Run()
+		log.Printf("[INFO] %s -x- %s", rw1.LocalAddr().String(), rw2.LocalAddr().String())
+	}()
 }
