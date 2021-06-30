@@ -99,7 +99,7 @@ func listenAndServe1(addr string) error {
 			continue
 		}
 		log.Printf("[INFO] client %s connected", rw.RemoteAddr().String())
-		serve1(rw)
+		go serve1(rw)
 	}
 }
 
@@ -123,7 +123,7 @@ func listenAndServe2(addr string) error {
 			continue
 		}
 		log.Printf("[INFO] agent %s connected", rw.RemoteAddr().String())
-		serve2(rw)
+		go serve2(rw)
 	}
 }
 
