@@ -15,7 +15,7 @@ import (
 var (
 	clientListenAddr string
 	agentListenAddr  string
-	agentPassword    string
+	agentToken    string
 )
 
 var (
@@ -25,13 +25,13 @@ var (
 
 func main() {
 	flag.Usage = func() {
-		fmt.Println("Usage: public")
+		fmt.Println("Usage: proxy")
 		flag.PrintDefaults()
 	}
 
-	flag.StringVar(&clientListenAddr, "c", "", "listen address for client")
-	flag.StringVar(&agentListenAddr, "a", "", "listen address for agent")
-	flag.StringVar(&agentPassword, "p", "", "password for agent")
+	flag.StringVar(&clientListenAddr, "client", "", "listen address for client")
+	flag.StringVar(&agentListenAddr, "agent", "", "listen address for agent")
+	flag.StringVar(&agentToken, "token", "", "token for agent")
 	flag.Parse()
 
 	if clientListenAddr == "" {
@@ -44,12 +44,12 @@ func main() {
 		return
 	}
 
-	if agentPassword == "" {
+	if agentToken == "" {
 		flag.Usage()
 		return
 	}
 
-	log.Println("public v0.1.0")
+	log.Println("proxy v0.1.0")
 
 	ch1 = make(chan net.Conn, 10)
 	ch2 = make(chan net.Conn, 10)
@@ -61,6 +61,7 @@ func main() {
 		defer wg.Done()
 		err := listenAndServe1(clientListenAddr)
 		if err != nil {
+			log.Println("[ERROR]", err)
 			os.Exit(1)
 		}
 	}()
@@ -70,6 +71,7 @@ func main() {
 		defer wg.Done()
 		err := listenAndServe2(agentListenAddr)
 		if err != nil {
+			log.Println("[ERROR]", err)
 			os.Exit(1)
 		}
 	}()
@@ -128,18 +130,18 @@ func listenAndServe2(addr string) error {
 }
 
 func serve2(rw net.Conn) {
-	buf := make([]byte, len(agentPassword))
+	buf := make([]byte, len(agentToken))
 	_, err := rw.Read(buf)
 	if err != nil {
 		rw.Close()
 		return
 	}
-	if string(buf) != agentPassword {
+	if string(buf) != agentToken {
 		rw.Close()
-		log.Printf("[WARN] %s password invalid (%s)\n", rw.RemoteAddr().String(), string(buf))
+		log.Printf("[WARN] %s token invalid (%s)\n", rw.RemoteAddr().String(), string(buf))
 		return
 	}
-	log.Printf("[INFO] %s password ok", rw.RemoteAddr().String())
+	log.Printf("[INFO] %s token ok", rw.RemoteAddr().String())
 
 	ch2 <- rw
 }
@@ -150,8 +152,8 @@ func pair() {
 		case rw1 := <-ch1:
 			select {
 			case rw2 := <-ch2:
-				log.Printf("[INFO] %s send password...", rw2.RemoteAddr().String())
-				rw2.Write([]byte(agentPassword))
+				log.Printf("[INFO] %s send token...", rw2.RemoteAddr().String())
+				rw2.Write([]byte(agentToken))
 				log.Printf("[INFO] %s <-> %s", rw2.RemoteAddr().String(), rw1.RemoteAddr().String())
 				join := tcpjoin.New(rw1, rw2)
 				go join.Run()
@@ -162,8 +164,8 @@ func pair() {
 		case rw2 := <-ch2:
 			select {
 			case rw1 := <-ch1:
-				log.Printf("[INFO] %s send password...", rw2.RemoteAddr().String())
-				rw2.Write([]byte(agentPassword))
+				log.Printf("[INFO] %s send token...", rw2.RemoteAddr().String())
+				rw2.Write([]byte(agentToken))
 				log.Printf("[INFO] %s <-> %s", rw2.RemoteAddr().String(), rw1.RemoteAddr().String())
 				join := tcpjoin.New(rw2, rw1)
 				go join.Run()
