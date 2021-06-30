@@ -1,4 +1,4 @@
-module private
+module agent
 
 go 1.14
 
