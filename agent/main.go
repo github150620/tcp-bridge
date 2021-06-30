@@ -47,11 +47,7 @@ func main() {
 
 	log.Println("agent v0.1.0")
 
-	ch = make(chan struct{}, 5)
-	ch <- struct{}{}
-	ch <- struct{}{}
-	ch <- struct{}{}
-	ch <- struct{}{}
+	ch = make(chan struct{}, 1)
 	ch <- struct{}{}
 
 	for {
