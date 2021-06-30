@@ -53,6 +53,7 @@ func main() {
 	for {
 		select {
 		case <-ch:
+			log.Printf("[INFO] Start a new connection")
 			go connectAndServe()
 		}
 	}
@@ -65,47 +66,56 @@ func connectAndServe() {
 
 	buf := make([]byte, len(proxyToken))
 
+	log.Printf("[INFO] Connecting to proxy(%s)...", proxyAddr)
 	rw1, err := net.Dial("tcp", proxyAddr)
 	if err != nil {
+		log.Printf("[WARN] Failed! Error: %v", err)
 		time.Sleep(time.Second * 5)
 		return
 	}
-	log.Printf("[INFO] %s connected to proxy", rw1.LocalAddr().String())
+	log.Printf("[INFO] Connected. Local address is %s.", rw1.LocalAddr().String())
 
-	_, err = rw1.Write([]byte(proxyToken))
+	log.Printf("[INFO] Sending token(%s)...", []byte(proxyToken))
+	n, err := rw1.Write([]byte(proxyToken))
 	if err != nil {
+		log.Printf("[WARN] Failed! Error: %v", err)
 		rw1.Close()
 		time.Sleep(time.Second * 5)
 		return
 	}
-	log.Printf("[INFO] %s sent password", rw1.LocalAddr().String())
+	log.Printf("[INFO] Sent.")
 
-	n, err := rw1.Read(buf)
+	log.Printf("[INFO] Waiting for proxy token...")
+	n, err = rw1.Read(buf)
 	if err != nil {
+		log.Printf("[WARN] Receive failed. %v", err)
 		rw1.Close()
 		time.Sleep(time.Second * 5)
 		return
 	}
-	log.Printf("[INFO] %s received password %s", rw1.LocalAddr().String(), buf[:n])
+	log.Printf("[INFO] Received token(%s)", buf[:n])
 
 	if string(buf[:n]) != proxyToken {
+		log.Printf("[INFO] Invalid token. Try again after 5 seconds.")
 		rw1.Close()
 		time.Sleep(time.Second * 5)
 		return
 	}
 
+	log.Printf("[INFO] Connecting to server(%s)...", serverAddr)
 	rw2, err := net.Dial("tcp", serverAddr)
 	if err != nil {
+		log.Printf("[WARN] Failed! Error: %v", err)
 		rw1.Close()
 		time.Sleep(time.Second * 5)
 		return
 	}
-	log.Printf("[INFO] %s connected to server", rw1.LocalAddr().String())
+	log.Printf("[INFO] Connected. Local address is %s", rw2.LocalAddr().String())
 
-	log.Printf("[INFO] %s <-> %s", rw1.LocalAddr().String(), rw2.LocalAddr().String())
+	log.Printf("[INFO] Join(%s,%s)...", rw1.LocalAddr().String(), rw2.LocalAddr().String())
 	join := tcpjoin.New(rw1, rw2)
 	go func() {
 		join.Run()
-		log.Printf("[INFO] %s -x- %s", rw1.LocalAddr().String(), rw2.LocalAddr().String())
+		log.Printf("[INFO] Join(%s,%s) over.", rw1.LocalAddr().String(), rw2.LocalAddr().String())
 	}()
 }
